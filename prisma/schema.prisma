@@ -1,0 +1,262 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+// Enums
+enum Role {
+  CUSTOMER
+  VENDOR
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  CASH
+}
+
+// User-related models
+model User {
+  id         String   @id @default(uuid()) @db.Uuid
+  email      String   @unique
+  name       String?  
+  avatarUrl  String?  // Changed from avatar_url for consistency
+  phone      String?  
+  roles      Role[]   @default([CUSTOMER]) 
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  products        Product[]
+  orders          Order[]
+  reviews         Review[]
+  vendorProfile   VendorProfile?
+  customerProfile CustomerProfile?
+  wishlists       Wishlist[]
+  notifications   Notification[]
+
+  @@map("users")
+}
+
+model VendorProfile {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @unique @db.Uuid @map("user_id")
+  businessName   String   @map("business_name")
+  description    String?  @db.Text
+  whatsappNumber String   @map("whatsapp_number")
+  address        String?
+  isVerified     Boolean  @default(false) @map("is_verified")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("vendor_profiles")
+}
+
+model CustomerProfile {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @unique @db.Uuid @map("user_id")
+  loyaltyPoints Int?     @map("loyalty_points")
+  preferences   Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("customer_profiles")
+}
+
+// Product-related models
+model Product {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?  @db.Text
+  images         String[]
+  price          Float    
+  stock          Int  ?
+  published      Boolean  @default(false)
+  whatsappLink   String?  @map("whatsapp_link")
+  externalDocUrl String?  @map("external_doc_url")
+  shareableLink  String?  @unique @map("shareable_link")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  userId     String   @db.Uuid @map("user_id")
+  categoryId String   @db.Uuid @map("category_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id])
+  orderItems OrderItem[]
+  reviews    Review[]
+  tags       Tag[]
+  wishlists  Wishlist[]
+
+  @@map("products")
+}
+
+model Category {
+  id          String     @id @default(uuid()) @db.Uuid
+  name        String     @unique
+  slug        String     @unique
+  description String?    @db.Text
+  image       String?
+  parentId    String?    @db.Uuid @map("parent_id")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  products Product[]
+  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryHierarchy")
+
+
+  @@map("categories")
+}
+
+model Tag {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String    @unique
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  products  Product[]
+
+  @@map("tags")
+}
+
+// Order-related models
+model Order {
+  id          String      @id @default(uuid()) @db.Uuid
+  status      OrderStatus @default(PENDING)
+  totalAmount Float       @map("total_amount")
+  total       Float?
+  couponId    String?     @db.Uuid @map("coupon_id")
+  userId      String      @db.Uuid @map("user_id")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+  payments   Payment[]
+  coupon     Coupon?     @relation(fields: [couponId], references: [id])
+
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String  @id @default(uuid()) @db.Uuid
+  quantity  Int
+  unitPrice Float   @map("unit_price")
+  orderId   String  @db.Uuid @map("order_id")
+  productId String  @db.Uuid @map("product_id")
+
+  // Relations
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+
+  @@map("order_items")
+}
+
+model Payment {
+  id        String        @id @default(uuid()) @db.Uuid
+  amount    Float    
+  status    PaymentStatus @default(PENDING)
+  method    PaymentMethod
+  orderId   String        @db.Uuid @map("order_id")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  order Order @relation(fields: [orderId], references: [id])
+
+
+  @@map("payments")
+}
+
+// Additional features models
+model Coupon {
+  id            String    @id @default(uuid()) @db.Uuid
+  code          String    @unique
+  discountValue Float     @map("discount_value")
+  expiration    DateTime?
+  maxUsage      Int?      @map("max_usage")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  orders Order[]
+
+  @@map("coupons")
+}
+
+model Review {
+  id        String   @id @default(uuid()) @db.Uuid
+  rating    Int      @db.SmallInt
+  comment   String?  @db.Text
+  userId    String   @db.Uuid @map("user_id")
+  productId String   @db.Uuid @map("product_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+
+  @@map("reviews")
+}
+
+model Wishlist {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid @map("user_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products Product[]
+
+
+  @@map("wishlists")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  content   String   @db.Text
+  type      String
+  isRead    Boolean  @default(false) @map("is_read")
+  userId    String   @db.Uuid @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+
+  @@map("notifications")
+}
